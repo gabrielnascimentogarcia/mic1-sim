@@ -6,35 +6,39 @@ class DatapathView(tk.Canvas):
         super().__init__(master, bg='white', highlightthickness=0, **kwargs)
         self.registers_ref = registers
 
-        # --- Mundo Virtual (Largura aumentada para roteamento limpo) ---
-        self.VW = 1500
-        self.VH = 1600
+        # Mundo Virtual - AUMENTADO para evitar sobreposições
+        self.VW = 1800
+        self.VH = 1800
 
-        # --- Grid Horizontal (X) ---
-        self.X_MAR_MBR = 200    # Esquerda: Componentes de Memória
-        self.X_BUS_C   = 450    # Barramento C (Escrita)
-        self.X_REGS    = 750    # Centro dos Registradores
-        self.X_BUS_A   = 1050   # Barramento A (Leitura)
-        self.X_BUS_B   = 1250   # Barramento B (Leitura)
-
-        # --- Cores ---
-        self.C_OFF      = "#333333"
-        self.C_BUS_A    = "#0000FF" # Azul
-        self.C_BUS_B    = "#00AA00" # Verde
-        self.C_BUS_C    = "#FF0000" # Vermelho
-        self.C_BG_REG   = "#FFFFFF"
-        self.C_ACTIVE   = "#FFFFA0" # Amarelo Claro
-        self.C_LATCH    = "#F0F0F0"
+        # === POSIÇÕES HORIZONTAIS CORRIGIDAS ===
+        self.X_TEXT_LEFT = 100           # Textos descritivos esquerda
+        self.X_MAR_MBR = 280             # MAR/MBR
+        self.X_BUS_ENTRY = 450           # Barramento de entrada (vertical)
+        self.X_REG_LEFT = 520            # Borda esquerda registradores
+        self.X_REG_CENTER = 680          # Centro registradores
+        self.X_REG_RIGHT = 840           # Borda direita registradores
+        self.X_BUS_A = 920               # Barramento A (linha vertical)
+        self.X_BUS_B = 1050              # Barramento B (linha vertical)
+        self.X_LATCH_A = 920             # Latch A (alinhado com Bus A)
+        self.X_LATCH_B = 1050            # Latch B (alinhado com Bus B)
+        self.X_AMUX = 985                # AMUX (entre os latches)
+        self.X_ALU = 985                 # ALU
+        self.X_SHIFTER = 985             # Shifter
+        
+        # Cores
+        self.C_ACTIVE = "#FFFF99"
+        self.C_COMPONENT = "#FFFFFF"
 
         self.signals = None
         self.reg_values = {}
 
-        # Ordem da Pilha de Registradores
+        # Registradores
         self.stack_order = [
-            ("PC", 2), ("AC", 4), ("SP", 3), 
-            ("IR", 5), ("TIR", 6), 
+            ("PC", 2), ("AC", 4), ("SP", 3), ("IR", 5), ("TIR", 6),
             ("0", 7), ("+1", 8), ("-1", 9), 
-            ("AMASK", 10), ("SMASK", 11)
+            ("AMASK", 10), ("SMASK", 11),
+            ("A", 12), ("B", 13), ("C", 14), 
+            ("D", 15), ("E", 16), ("F", 17)
         ]
 
         self.bind("<Configure>", self.on_resize)
@@ -47,242 +51,258 @@ class DatapathView(tk.Canvas):
     def on_resize(self, event):
         self.draw()
 
-    # --- Helpers de Geometria ---
     def t(self, x, y):
-        """Escala coordenadas virtuais para a tela."""
-        w_win = self.winfo_width()
-        h_win = self.winfo_height()
-        scale = min(w_win / self.VW, h_win / self.VH) * 0.95
-        off_x = (w_win - self.VW * scale) / 2
-        off_y = (h_win - self.VH * scale) / 2
-        return off_x + x * scale, off_y + y * scale
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < 100 or h < 100:
+            return 0, 0
+        scale = min(w / self.VW, h / self.VH) * 0.95
+        ox = (w - self.VW * scale) / 2
+        oy = (h - self.VH * scale) / 2
+        return ox + x * scale, oy + y * scale
 
-    def get_font(self, size, bold=False):
-        s = min(self.winfo_width()/self.VW, self.winfo_height()/self.VH)
-        fs = max(8, int(size * s * 1.5))
-        return font.Font(family="Helvetica", size=fs, weight="bold" if bold else "normal")
+    def font_get(self, size, bold=False):
+        w, h = self.winfo_width(), self.winfo_height()
+        s = min(w / self.VW, h / self.VH)
+        fs = max(7, int(size * s * 2))
+        return font.Font(family="Arial", size=fs, weight="bold" if bold else "normal")
 
-    # --- Primitivas de Desenho ---
-    def rect(self, x, y, w, h, fill="white", outline="black", width=2, text=None, val=None):
+    def box(self, x, y, w, h, fill="#FFF", txt="", val=""):
         x0, y0 = self.t(x - w/2, y - h/2)
         x1, y1 = self.t(x + w/2, y + h/2)
-        self.create_rectangle(x0, y0, x1, y1, fill=fill, outline=outline, width=width)
-        if text:
-            f = self.get_font(12, True)
-            self.create_text(*self.t(x - w/2 + 10, y), text=text, anchor="w", font=f)
-        if val is not None:
-            f = self.get_font(12, False)
-            self.create_text(*self.t(x + w/2 - 10, y), text=val, anchor="e", font=f, fill="#555")
-
-    def wire(self, pts, color, width=2, arrow=None):
-        tk_pts = [c for p in pts for c in self.t(*p)]
-        # Arrowshape refinado para parecer técnico
-        self.create_line(tk_pts, fill=color, width=width, arrow=arrow, 
-                         arrowshape=(10, 12, 4), joinstyle=tk.MITER, capstyle=tk.ROUND)
-
-    def dot(self, x, y, color, r=5):
-        cx, cy = self.t(x, y)
-        self.create_oval(cx-r, cy-r, cx+r, cy+r, fill=color, outline="black")
-
-    def trapezoid(self, x, y, w_top, w_bot, h, fill="white", text=None):
-        pts = [
-            (x - w_top/2, y), (x + w_top/2, y),
-            (x + w_bot/2, y + h), (x - w_bot/2, y + h)
-        ]
-        tk_pts = [c for p in pts for c in self.t(*p)]
-        self.create_polygon(tk_pts, fill=fill, outline="black", width=2)
-        if text:
-            self.create_text(*self.t(x, y + h/2), text=text, font=self.get_font(11, True))
-
-    def ula_shape(self, x, y, fill="white", text=None, subtext=None):
-        """Desenha a ULA (V com recorte)."""
-        w_outer = 90
-        w_inner = 30
-        h_notch = 30
-        h_total = 100
-        w_tip = 30
-
-        pts = [
-            (x - w_outer, y),               # Topo Esq Externo
-            (x - w_inner, y + h_notch),     # Notch Esq
-            (x + w_inner, y + h_notch),     # Notch Dir
-            (x + w_outer, y),               # Topo Dir Externo
-            (x + w_tip, y + h_total),       # Ponta Dir
-            (x - w_tip, y + h_total)        # Ponta Esq
-        ]
-        tk_pts = [c for p in pts for c in self.t(*p)]
-        self.create_polygon(tk_pts, fill=fill, outline="black", width=2)
+        self.create_rectangle(x0, y0, x1, y1, fill=fill, outline="#000", width=2)
         
-        if text:
-            self.create_text(*self.t(x, y + 60), text=text, font=self.get_font(16, True))
-        if subtext:
-            self.create_text(*self.t(x + w_outer + 10, y + 50), text=subtext, 
-                             font=self.get_font(10), fill="blue", anchor="w")
+        if txt:
+            tx, ty = self.t(x - w/2 + 10, y)
+            self.create_text(tx, ty, text=txt, anchor="w", font=self.font_get(9, True))
+        
+        if val:
+            vx, vy = self.t(x + w/2 - 10, y)
+            self.create_text(vx, vy, text=val, anchor="e", font=self.font_get(8))
 
-    # --- Lógica de Desenho ---
+    def line(self, pts, w=2):
+        coords = []
+        for px, py in pts:
+            coords.extend(self.t(px, py))
+        if len(coords) >= 4:
+            self.create_line(coords, fill="#000", width=w)
+
+    def arrow(self, x0, y0, x1, y1, w=2):
+        px0, py0 = self.t(x0, y0)
+        px1, py1 = self.t(x1, y1)
+        self.create_line(px0, py0, px1, py1, fill="#000", width=w, 
+                        arrow=tk.LAST, arrowshape=(8, 10, 3))
+
+    def txt(self, x, y, text, size=8, bold=False):
+        tx, ty = self.t(x, y)
+        self.create_text(tx, ty, text=text, font=self.font_get(size, bold))
+
+    def mux(self, x, y, w, h, label=""):
+        w_top = w * 0.65
+        pts = [
+            self.t(x - w_top/2, y),
+            self.t(x + w_top/2, y),
+            self.t(x + w/2, y + h),
+            self.t(x - w/2, y + h)
+        ]
+        flat = [c for p in pts for c in p]
+        self.create_polygon(flat, fill="#FFF", outline="#000", width=2)
+        if label:
+            self.txt(x, y + h/2, label, 9, True)
+
+    def alu_shape(self, x, y):
+        w, h = 80, 110
+        pts = [
+            self.t(x - w, y),
+            self.t(x - w*0.35, y + h*0.28),
+            self.t(x + w*0.35, y + h*0.28),
+            self.t(x + w, y),
+            self.t(x + w*0.32, y + h),
+            self.t(x - w*0.32, y + h)
+        ]
+        flat = [c for p in pts for c in p]
+        self.create_polygon(flat, fill="#FFF", outline="#000", width=2)
+        self.txt(x, y + h/2, "ALU", 11, True)
+
     def draw(self):
         self.delete("all")
-        if self.winfo_width() < 100: return
+        if self.winfo_width() < 100:
+            return
 
         sig = self.signals
-        
-        # Cores Ativas
-        ca = self.C_BUS_A if (sig and not sig.amux) else self.C_OFF
-        cb = self.C_BUS_B if sig else self.C_OFF
-        cc = self.C_BUS_C if (sig and sig.enc) else self.C_OFF
 
-        # --- Topo e Fundo do Diagrama ---
-        Y_TOP = 40
-        Y_BOT_LOOP = 1450 # Ponto mais baixo onde o Shifter retorna
-        
-        # 1. Barramento C (A linha vertical principal)
-        # Ele sobe a partir da conexão do Shifter (ver passo 8)
-        self.wire([(self.X_BUS_C, Y_BOT_LOOP - 50), (self.X_BUS_C, Y_TOP)], color=cc, width=4, arrow=tk.LAST)
-        self.create_text(*self.t(self.X_BUS_C, Y_TOP-20), text="Bus C", font=self.get_font(14, True))
+        # === POSIÇÕES VERTICAIS ===
+        Y_TOP = 80
+        Y_REG_START = 140
+        REG_H = 40
+        REG_GAP = 4
+        REG_W = 300
 
-        # 2. Pilha de Registradores
-        y_r = 80
-        W_REG = 200
-        H_REG = 50
-        GAP = 20
-
-        # Barramentos A e B descem até os Latches
-        # Calculamos onde começam os latches
-        total_regs_h = len(self.stack_order) * (H_REG + GAP)
-        Y_LATCHES = y_r + total_regs_h + 20
-
-        # Desenhar Linhas Verticais A e B
-        self.wire([(self.X_BUS_A, Y_TOP), (self.X_BUS_A, Y_LATCHES)], color=ca, width=4)
-        self.create_text(*self.t(self.X_BUS_A, Y_TOP-20), text="Bus A", font=self.get_font(14, True))
-
-        self.wire([(self.X_BUS_B, Y_TOP), (self.X_BUS_B, Y_LATCHES + 150)], color=cb, width=4) # Vai mais longe (até o MAR)
-        self.create_text(*self.t(self.X_BUS_B, Y_TOP-20), text="Bus B", font=self.get_font(14, True))
-
-        # Desenhar cada registrador
+        # Posições dos registradores
+        reg_y = {}
+        y = Y_REG_START
         for name, idx in self.stack_order:
-            # Lógica
-            is_dest = (sig and sig.enc and sig.c == idx)
-            is_src_a = (sig and sig.a == idx)
-            is_src_b = (sig and sig.b == idx)
-            bg = self.C_ACTIVE if (is_dest or is_src_a or is_src_b) else "white"
+            reg_y[idx] = y
+            y += REG_H + REG_GAP
 
-            # Input C (Seta da Esquerda)
-            c_in = cc if is_dest else self.C_OFF
-            self.wire([(self.X_BUS_C, y_r), (self.X_REGS - W_REG/2, y_r)], color=c_in, width=2, arrow=tk.LAST if is_dest else None)
-            if is_dest: self.dot(self.X_BUS_C, y_r, c_in)
+        Y_REG_END = y - REG_GAP
+        Y_MAR = Y_REG_START + 100
+        Y_MBR = Y_MAR + 100
+        Y_LATCHES = Y_REG_END + 80
+        Y_AMUX = Y_LATCHES + 120
+        Y_ALU = Y_AMUX + 150
+        Y_SHIFTER = Y_ALU + 150
+        Y_BOTTOM = Y_SHIFTER + 100
 
-            # Output A (Seta Superior)
-            c_out_a = self.C_BUS_A if is_src_a else self.C_OFF
-            self.wire([(self.X_REGS + W_REG/2, y_r - 10), (self.X_BUS_A, y_r - 10)], color=c_out_a, width=2, arrow=tk.LAST)
-            if is_src_a: self.dot(self.X_BUS_A, y_r - 10, c_out_a)
+        # === BARRAMENTO VERTICAL PRINCIPAL (ENTRADA) ===
+        self.line([(self.X_BUS_ENTRY, Y_TOP), (self.X_BUS_ENTRY, Y_BOTTOM)], w=4)
 
-            # Output B (Seta Inferior)
-            c_out_b = self.C_BUS_B if is_src_b else self.C_OFF
-            self.wire([(self.X_REGS + W_REG/2, y_r + 10), (self.X_BUS_B, y_r + 10)], color=c_out_b, width=2, arrow=tk.LAST)
-            if is_src_b: self.dot(self.X_BUS_B, y_r + 10, c_out_b)
+        # === TEXTOS DESCRITIVOS ===
+        self.txt(self.X_TEXT_LEFT, Y_MAR - 20, "Para o barramento", 7)
+        self.txt(self.X_TEXT_LEFT, Y_MAR - 5, "de endereços", 7)
+        
+        self.txt(self.X_TEXT_LEFT, Y_MBR - 20, "Para o barramento", 7)
+        self.txt(self.X_TEXT_LEFT, Y_MBR - 5, "de dados", 7)
 
-            # Caixa
-            val_txt = None
-            if name not in ["0", "+1", "-1", "AMASK", "SMASK"]:
-                val_txt = f"{self.reg_values.get(name, 0):04X}"
-            self.rect(self.X_REGS, y_r, W_REG, H_REG, fill=bg, text=name, val=val_txt)
-            
-            y_r += H_REG + GAP
-
-        # 3. Latches (Abaixo dos Registradores)
-        self.rect(self.X_BUS_A, Y_LATCHES + 20, 80, 40, fill=self.C_LATCH)
-        self.create_text(*self.t(self.X_BUS_A, Y_LATCHES + 20), text="Latch A", font=self.get_font(10))
-
-        self.rect(self.X_BUS_B, Y_LATCHES + 20, 80, 40, fill=self.C_LATCH)
-        self.create_text(*self.t(self.X_BUS_B, Y_LATCHES + 20), text="Latch B", font=self.get_font(10))
-
-        # 4. MAR e MBR (Componentes Inferiores)
-        Y_MAR_CONN = Y_LATCHES + 100 # Conexão do MAR ocorre abaixo dos latches
-        Y_COMPONENTS = Y_MAR_CONN + 40
-
-        # -- MAR --
+        # === MAR ===
         is_mar = (sig and sig.mar)
-        c_mar = self.C_BUS_B if is_mar else self.C_OFF
+        self.box(self.X_MAR_MBR, Y_MAR, 100, 50, 
+                fill=self.C_ACTIVE if is_mar else self.C_COMPONENT,
+                txt="MAR", val=f"{self.reg_values.get('MAR', 0):03X}")
         
-        self.rect(self.X_MAR_MBR, Y_COMPONENTS, 160, 50, fill=self.C_ACTIVE if is_mar else "white", 
-                  text="MAR", val=f"{self.reg_values.get('MAR',0):04X}")
+        # Label M4
+        self.txt(self.X_TEXT_LEFT, Y_MAR, "M4", 7)
+        self.arrow(self.X_MAR_MBR - 55, Y_MAR, self.X_MAR_MBR - 50, Y_MAR, w=1)
+
+        # === MBR ===
+        is_mbr_write = (sig and sig.mbr)
+        is_mbr_read = (sig and sig.amux == 1)
+        self.box(self.X_MAR_MBR, Y_MBR, 100, 50,
+                fill=self.C_ACTIVE if (is_mbr_write or is_mbr_read) else self.C_COMPONENT,
+                txt="MBR", val=f"{self.reg_values.get('MBR', 0):04X}")
         
-        # Conexão Bus B -> MAR (Linha Horizontal Longa)
-        self.wire([(self.X_BUS_B, Y_MAR_CONN), (self.X_MAR_MBR + 80, Y_MAR_CONN), (self.X_MAR_MBR + 80, Y_COMPONENTS)], 
-                  color=c_mar, arrow=tk.LAST)
-        if is_mar: self.dot(self.X_BUS_B, Y_MAR_CONN, c_mar)
-
-        # -- MBR --
-        y_mbr = Y_COMPONENTS + 80
-        is_mbr_load = (sig and sig.mbr)
-        is_mbr_out = (sig and sig.amux)
-        bg_mbr = self.C_ACTIVE if (is_mbr_load or is_mbr_out) else "white"
-
-        self.rect(self.X_MAR_MBR, y_mbr, 160, 50, fill=bg_mbr, 
-                  text="MBR", val=f"{self.reg_values.get('MBR',0):04X}")
-
-        # 5. AMUX (Abaixo dos Latches)
-        y_amux = Y_LATCHES + 120
-        x_amux = self.X_BUS_A - 40
-        self.trapezoid(x_amux, y_amux, 120, 60, 40, text="AMUX")
-
-        # Entrada 0: Latch A
-        c_latch_a = ca if (sig and not sig.amux) else self.C_OFF
-        self.wire([(self.X_BUS_A, Y_LATCHES + 40), (self.X_BUS_A, y_amux), (x_amux + 20, y_amux)], 
-                  color=c_latch_a, arrow=tk.LAST)
-        self.create_text(*self.t(x_amux + 30, y_amux - 10), text="0", font=self.get_font(9))
-
-        # Entrada 1: MBR (Saída do MBR para o AMUX)
-        c_mbr_amux = self.C_BUS_A if is_mbr_out else self.C_OFF
-        # Rota: MBR -> Direita (passa por cima do Bus C) -> Sobe -> Entrada AMUX
-        self.wire([
-            (self.X_MAR_MBR + 80, y_mbr),   # Sai do MBR
-            (x_amux - 30, y_mbr),           # Vai até perto do AMUX
-            (x_amux - 30, y_amux)           # Sobe para entrada 1
-        ], color=c_mbr_amux, arrow=tk.LAST)
-        self.create_text(*self.t(x_amux - 40, y_amux - 10), text="1", font=self.get_font(9))
-
-
-        # 6. ULA
-        y_ula = y_amux + 80
-        x_ula = (self.X_BUS_B + x_amux) / 2
+        # Labels M0 e M1
+        self.txt(self.X_TEXT_LEFT, Y_MBR - 10, "M0", 7)
+        self.arrow(self.X_BUS_ENTRY, Y_MBR - 10, self.X_MAR_MBR - 50, Y_MBR - 10, w=1)
         
-        flags = None
+        self.txt(self.X_TEXT_LEFT, Y_MBR + 10, "M1", 7)
+        self.arrow(self.X_MAR_MBR + 50, Y_MBR + 10, self.X_MAR_MBR + 100, Y_MBR + 10, w=1)
+
+        # === REGISTRADORES ===
+        for name, idx in self.stack_order:
+            y_reg = reg_y[idx]
+            
+            is_write = (sig and sig.enc and sig.c == idx)
+            is_read_a = (sig and sig.a == idx)
+            is_read_b = (sig and sig.b == idx)
+            
+            fill = self.C_ACTIVE if (is_write or is_read_a or is_read_b) else self.C_COMPONENT
+            
+            val = ""
+            if name not in ["0", "+1", "-1", "AMASK", "SMASK", "A", "B", "C", "D", "E", "F"]:
+                val = f"{self.reg_values.get(name, 0):04X}"
+            
+            self.box(self.X_REG_CENTER, y_reg, REG_W, REG_H, fill=fill, txt=name, val=val)
+            
+            # Entrada (esquerda)
+            if is_write:
+                self.arrow(self.X_BUS_ENTRY, y_reg, self.X_REG_LEFT, y_reg, w=2)
+            else:
+                self.line([(self.X_BUS_ENTRY, y_reg), (self.X_REG_LEFT, y_reg)], w=1)
+            
+            # Saídas duplas paralelas (direita)
+            y_top = y_reg - 10
+            y_bot = y_reg + 10
+            
+            # Para Bus A (superior)
+            if is_read_a:
+                self.arrow(self.X_REG_RIGHT, y_top, self.X_BUS_A, y_top, w=1)
+            else:
+                self.line([(self.X_REG_RIGHT, y_top), (self.X_BUS_A, y_top)], w=1)
+            
+            # Para Bus B (inferior)
+            if is_read_b:
+                self.arrow(self.X_REG_RIGHT, y_bot, self.X_BUS_B, y_bot, w=1)
+            else:
+                self.line([(self.X_REG_RIGHT, y_bot), (self.X_BUS_B, y_bot)], w=1)
+
+        # === BARRAMENTOS VERTICAIS A e B ===
+        self.line([(self.X_BUS_A, Y_REG_START - 30), (self.X_BUS_A, Y_LATCHES - 20)], w=3)
+        self.line([(self.X_BUS_B, Y_REG_START - 30), (self.X_BUS_B, Y_LATCHES - 20)], w=3)
+
+        # === LABELS L0 e L1 ===
+        y_labels = Y_LATCHES - 40
+        self.txt(self.X_BUS_A + 50, y_labels, "L0", 7)
+        self.arrow(self.X_BUS_A, y_labels, self.X_BUS_A + 35, y_labels, w=1)
+        
+        self.txt(self.X_BUS_B + 50, y_labels, "L1", 7)
+        self.arrow(self.X_BUS_B, y_labels, self.X_BUS_B + 35, y_labels, w=1)
+
+        # === LATCHES ===
+        self.box(self.X_LATCH_A, Y_LATCHES, 90, 45, fill="#E8E8E8", txt="Latch A")
+        self.box(self.X_LATCH_B, Y_LATCHES, 90, 45, fill="#E8E8E8", txt="Latch B")
+
+        # === AMUX ===
+        self.mux(self.X_AMUX, Y_AMUX, 90, 70, "AMUX")
+        
+        # Entrada A0 (Latch A)
+        self.txt(self.X_AMUX - 60, Y_AMUX + 20, "A0", 7)
+        self.line([
+            (self.X_LATCH_A, Y_LATCHES + 23),
+            (self.X_LATCH_A, Y_AMUX + 20),
+            (self.X_AMUX - 38, Y_AMUX + 20)
+        ], w=2)
+        
+        # Entrada do MBR
+        y_mbr_route = Y_AMUX + 50
+        self.line([
+            (self.X_MAR_MBR + 50, Y_MBR + 10),
+            (self.X_AMUX - 120, Y_MBR + 10),
+            (self.X_AMUX - 120, y_mbr_route),
+            (self.X_AMUX - 38, y_mbr_route)
+        ], w=2)
+
+        # === ALU ===
+        self.alu_shape(self.X_ALU, Y_ALU)
+        
+        # Flags
         if self.registers_ref:
             n = (self.registers_ref.AC >> 15) & 1
             z = 1 if self.registers_ref.AC == 0 else 0
-            flags = f"N={n}\nZ={z}"
+            self.txt(self.X_ALU + 100, Y_ALU + 35, f"N", 8)
+            self.txt(self.X_ALU + 100, Y_ALU + 50, f"Z", 8)
         
-        self.ula_shape(x_ula, y_ula, fill="white", text="ULA", subtext=flags)
+        # Entrada F0 (AMUX)
+        self.txt(self.X_ALU - 100, Y_ALU + 30, "F0", 7)
+        self.line([
+            (self.X_AMUX, Y_AMUX + 70),
+            (self.X_AMUX, Y_ALU + 20),
+            (self.X_ALU - 65, Y_ALU + 30)
+        ], w=2)
         
-        # Entradas ULA
-        c_ula_a = self.C_BUS_A if sig else self.C_OFF
-        self.wire([(x_amux, y_amux + 40), (x_ula - 30, y_ula)], color=c_ula_a, arrow=tk.LAST)
+        # Entrada F1 (Latch B)
+        self.txt(self.X_ALU + 100, Y_ALU + 15, "F1", 7)
+        self.line([
+            (self.X_LATCH_B, Y_LATCHES + 23),
+            (self.X_LATCH_B, Y_ALU + 30),
+            (self.X_ALU + 65, Y_ALU + 30)
+        ], w=2)
 
-        c_ula_b = self.C_BUS_B if sig else self.C_OFF
-        self.wire([(self.X_BUS_B, Y_LATCHES + 40), (self.X_BUS_B, y_ula), (x_ula + 30, y_ula)], 
-                  color=c_ula_b, arrow=tk.LAST)
-
-        # 7. Shifter
-        y_shift = y_ula + 120
-        self.rect(x_ula, y_shift, 120, 40, text="Shifter")
-        # ULA -> Shifter
-        self.wire([(x_ula, y_ula + 100), (x_ula, y_shift - 20)], color=cc, arrow=tk.LAST)
-
-        # 8. Loop Inferior (Shifter -> Bus C e MBR)
-        y_loop = y_shift + 50
+        # === SHIFTER ===
+        self.box(self.X_SHIFTER, Y_SHIFTER, 110, 50, txt="Deslocador")
         
-        # Sai do Shifter e desce
-        self.wire([(x_ula, y_shift + 20), (x_ula, y_loop)], color=cc)
+        # S0 e S1
+        self.txt(self.X_SHIFTER - 75, Y_SHIFTER, "S0", 7)
+        self.txt(self.X_SHIFTER + 75, Y_SHIFTER, "S1", 7)
         
-        # Linha Horizontal (Base do Loop)
-        x_mbr_in = self.X_MAR_MBR + 80
-        self.wire([(x_ula, y_loop), (x_mbr_in, y_loop)], color=cc)
-        
-        # O "T" Invertido para o Bus C
-        self.wire([(self.X_BUS_C, y_loop), (self.X_BUS_C, Y_BOT_LOOP - 50)], color=cc)
-        self.dot(self.X_BUS_C, y_loop, cc) # Ponto de conexão
+        self.arrow(self.X_ALU, Y_ALU + 110, self.X_ALU, Y_SHIFTER - 25, w=3)
 
-        # Perna para o MBR (Entrada)
-        c_mbr_in = cc if (sig and sig.enc and sig.c == 1) else self.C_OFF
-        self.wire([(x_mbr_in, y_loop), (x_mbr_in, y_mbr + 25)], color=c_mbr_in, arrow=tk.LAST)
+        # === RETORNO ===
+        self.line([
+            (self.X_SHIFTER, Y_SHIFTER + 25),
+            (self.X_SHIFTER, Y_BOTTOM),
+            (self.X_BUS_ENTRY, Y_BOTTOM),
+            (self.X_BUS_ENTRY, Y_TOP)
+        ], w=4)
+        
+        self.txt(self.X_SHIFTER - 100, Y_BOTTOM + 20, "Saída de dados", 7)
