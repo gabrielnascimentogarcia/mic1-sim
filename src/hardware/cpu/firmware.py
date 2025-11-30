@@ -56,7 +56,6 @@ CONTROL_STORE[1] = micro_inst(
 )
 
 # Endereço 2: IR := MBR; DECODE!
-# cond=3 sinaliza para o hardware pular para o endereço do Opcode (ex: 10, 20, 30...)
 CONTROL_STORE[2] = micro_inst(
     amux=1,     # Seleciona MBR
     alu=ALUOp.IDENTITY.value,
@@ -71,10 +70,12 @@ CONTROL_STORE[2] = micro_inst(
 # Semântica: AC := Memory[Endereço]
 # ==============================================================================
 
-# 10: MAR := IR (Endereço); rd;
+# 10: MAR := IR & AMASK; rd;
+# CORREÇÃO CRÍTICA: B=10 (AMASK) e ALU=AND para limpar o Opcode
 CONTROL_STORE[10] = micro_inst(
     a=5,        # A = IR
-    alu=ALUOp.IDENTITY.value,
+    b=10,       # B = AMASK (0x0FFF) - Constante no índice 10
+    alu=ALUOp.AND.value, # IR AND AMASK
     mar=1,      # Grava no MAR
     rd=1,       # Inicia leitura da memória
     enc=0,
@@ -101,10 +102,12 @@ CONTROL_STORE[12] = micro_inst(
 # Semântica: Memory[Endereço] := AC
 # ==============================================================================
 
-# 20: MAR := IR (Endereço); 
+# 20: MAR := IR & AMASK; 
+# CORREÇÃO CRÍTICA: Usamos AND com AMASK.
 CONTROL_STORE[20] = micro_inst(
     a=5,        # A = IR
-    alu=ALUOp.IDENTITY.value,
+    b=10,       # B = AMASK (0x0FFF)
+    alu=ALUOp.AND.value, # IR AND AMASK
     mar=1,      # Grava no MAR
     enc=0,
     addr=21
@@ -136,10 +139,12 @@ CONTROL_STORE[23] = micro_inst(
 # Semântica: AC := AC + Memory[Endereço]
 # ==============================================================================
 
-# 30: MAR := IR (Endereço); rd;
+# 30: MAR := IR & AMASK; rd;
+# CORREÇÃO CRÍTICA: Usamos AND com AMASK.
 CONTROL_STORE[30] = micro_inst(
     a=5,        # A = IR
-    alu=ALUOp.IDENTITY.value,
+    b=10,       # B = AMASK (0x0FFF)
+    alu=ALUOp.AND.value, # IR AND AMASK
     mar=1,
     rd=1,       # Leitura
     enc=0,
@@ -153,7 +158,6 @@ CONTROL_STORE[31] = micro_inst(
 )
 
 # 32: AC := AC + MBR; goto 0
-# MBR entra pelo AMUX (A), AC entra pelo Barramento B
 CONTROL_STORE[32] = micro_inst(
     amux=1,     # A = MBR (Dado da memória)
     b=4,        # B = AC (Acumulador atual)
@@ -168,11 +172,13 @@ CONTROL_STORE[32] = micro_inst(
 # Semântica: PC := Endereço
 # ==============================================================================
 
-# 70: PC := IR (Bits de endereço); goto 0
+# 70: PC := IR & AMASK; goto 0
+# CORREÇÃO CRÍTICA: Limpamos o opcode antes de jogar no PC também.
 CONTROL_STORE[70] = micro_inst(
     a=5,        # A = IR
-    alu=ALUOp.IDENTITY.value,
+    b=10,       # B = AMASK
+    alu=ALUOp.AND.value, # IR AND AMASK
     c=2,        # Grava no PC
     enc=1,
-    addr=0      # Volta para Fetch (que já vai buscar no novo endereço)
+    addr=0      # Volta para Fetch
 )
