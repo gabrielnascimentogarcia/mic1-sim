@@ -198,20 +198,49 @@ class DatapathView(tk.Canvas):
         self.draw_box(self.X_MAR_MBR, mar_y, self.MAR_MBR_W, self.MAR_MBR_H, "MAR", val_mar)
         self.draw_box(self.X_MAR_MBR, mbr_y, self.MAR_MBR_W, self.MAR_MBR_H, "MBR", val_mbr)
 
-        # --- NOVO: CONEXÃO LATCH B -> MAR (Ramificação) ---
-        # Sai da linha vertical do Latch B (na altura do MAR) e vai para a direita do MAR
+        # --- CONEXÃO LATCH B -> MAR (Ramificação) ---
         mar_right_x = self.X_MAR_MBR + (self.MAR_MBR_W / 2)
         
         x_bus_b_scr, y_mar_scr = self.t(bus_b_x, mar_y)
         x_mar_in_scr, _ = self.t(mar_right_x, mar_y)
         
-        # Desenha a linha da direita para a esquerda (Bus B -> MAR)
         self.create_line(x_bus_b_scr, y_mar_scr, x_mar_in_scr, y_mar_scr, 
                          width=2, fill="black", arrow=tk.LAST, arrowshape=(8, 10, 3))
-        # --------------------------------------------------
+
+        # === 6. INTERFACE DE MEMÓRIA (Lado Esquerdo do MAR/MBR) ===
+        # Duas barras verticais e conexão
+        mem_bus_x = self.X_MAR_MBR - (self.MAR_MBR_W / 2) - 60 
+        
+        # Coordenadas do topo e base das barras de memória
+        y_top_mem = mar_y - 30
+        y_bot_mem = mbr_y + 30
+        
+        x_mem_scr, y_mem_top_scr = self.t(mem_bus_x, y_top_mem)
+        _, y_mem_bot_scr = self.t(mem_bus_x, y_bot_mem)
+        
+        # Barra 1 (Direita)
+        self.create_line(x_mem_scr, y_mem_top_scr, x_mem_scr, y_mem_bot_scr, width=4, fill="gray")
+        
+        # Barra 2 (Esquerda) - paralela
+        x_mem2_scr, _ = self.t(mem_bus_x - 15, y_top_mem)
+        self.create_line(x_mem2_scr, y_mem_top_scr, x_mem2_scr, y_mem_bot_scr, width=4, fill="gray")
+        
+        # Conexão MAR -> Memória
+        x_mar_left_scr, _ = self.t(self.X_MAR_MBR - (self.MAR_MBR_W / 2), mar_y)
+        self.create_line(x_mar_left_scr, y_mar_scr, x_mem_scr, y_mar_scr, width=2, fill="black", arrow=tk.LAST, arrowshape=(8, 10, 3))
+        
+        # Conexão MBR <-> Memória (Bidirecional)
+        x_mbr_left_scr, y_mbr_scr = self.t(self.X_MAR_MBR - (self.MAR_MBR_W / 2), mbr_y)
+        _, y_mbr_scr_t = self.t(mem_bus_x, mbr_y)
+        self.create_line(x_mbr_left_scr, y_mbr_scr_t, x_mem_scr, y_mbr_scr_t, width=2, fill="black", arrow=tk.BOTH, arrowshape=(8, 10, 3))
+        
+        # Label "Memória"
+        x_lbl, y_lbl = self.t(mem_bus_x - 40, (mar_y + mbr_y) / 2)
+        self.create_text(x_lbl, y_lbl, text="Memória", angle=90, font=self.font_get(12, True))
+        # -----------------------------------------------------------
 
 
-        # === 6. AMUX, ALU e DESLOCADOR ===
+        # === 7. AMUX, ALU e DESLOCADOR ===
         y_base_MBR = mbr_y + (self.MAR_MBR_H / 2)
         
         # AMUX alinhado com Bus A
@@ -272,7 +301,7 @@ class DatapathView(tk.Canvas):
 
         self.draw_box(alu_center_x, shifter_y, 250, 50, "Shifter", value=None)
 
-        # === 7. CONEXÃO DE RETORNO (SHIFTER -> MBR e BUS C) ===
+        # === 8. CONEXÃO DE RETORNO (SHIFTER -> MBR e BUS C) ===
         shifter_bottom_y = shifter_y + 25
         mbr_bottom_y = mbr_y + 25 
 
