@@ -67,7 +67,7 @@ CONTROL_STORE[2] = micro_inst(
 )
 
 # ==============================================================================
-# INSTRUÇÃO: LODD (Load Direct) - Opcode 0 -> Endereço 10
+# INSTRUÇÃO 0: LODD (Load Direct) - Opcode 0 -> Endereço 10
 # Semântica: AC := Memory[Endereço]
 # ==============================================================================
 
@@ -94,4 +94,85 @@ CONTROL_STORE[12] = micro_inst(
     c=4,        # Grava em AC (4)
     enc=1,
     addr=0      # Volta para o início (Fetch)
+)
+
+# ==============================================================================
+# INSTRUÇÃO 1: STOD (Store Direct) - Opcode 1 -> Endereço 20
+# Semântica: Memory[Endereço] := AC
+# ==============================================================================
+
+# 20: MAR := IR (Endereço); 
+CONTROL_STORE[20] = micro_inst(
+    a=5,        # A = IR
+    alu=ALUOp.IDENTITY.value,
+    mar=1,      # Grava no MAR
+    enc=0,
+    addr=21
+)
+
+# 21: MBR := AC; wr; 
+CONTROL_STORE[21] = micro_inst(
+    a=4,        # A = AC
+    alu=ALUOp.IDENTITY.value,
+    mbr=1,      # Grava no MBR
+    wr=1,       # Sinaliza escrita na RAM
+    enc=0,
+    addr=22
+)
+
+# 22: wr; (Ciclo de espera para a memória gravar)
+CONTROL_STORE[22] = micro_inst(
+    wr=1,
+    addr=23
+)
+
+# 23: goto 0 (Volta para o Fetch)
+CONTROL_STORE[23] = micro_inst(
+    addr=0
+)
+
+# ==============================================================================
+# INSTRUÇÃO 2: ADDD (Add Direct) - Opcode 2 -> Endereço 30
+# Semântica: AC := AC + Memory[Endereço]
+# ==============================================================================
+
+# 30: MAR := IR (Endereço); rd;
+CONTROL_STORE[30] = micro_inst(
+    a=5,        # A = IR
+    alu=ALUOp.IDENTITY.value,
+    mar=1,
+    rd=1,       # Leitura
+    enc=0,
+    addr=31
+)
+
+# 31: rd; (Espera dado chegar no MBR)
+CONTROL_STORE[31] = micro_inst(
+    rd=1,
+    addr=32
+)
+
+# 32: AC := AC + MBR; goto 0
+# MBR entra pelo AMUX (A), AC entra pelo Barramento B
+CONTROL_STORE[32] = micro_inst(
+    amux=1,     # A = MBR (Dado da memória)
+    b=4,        # B = AC (Acumulador atual)
+    alu=ALUOp.ADD.value, # A + B
+    c=4,        # Grava resultado no AC
+    enc=1,
+    addr=0
+)
+
+# ==============================================================================
+# INSTRUÇÃO 6: JUMP (Unconditional Jump) - Opcode 6 -> Endereço 70
+# Semântica: PC := Endereço
+# ==============================================================================
+
+# 70: PC := IR (Bits de endereço); goto 0
+CONTROL_STORE[70] = micro_inst(
+    a=5,        # A = IR
+    alu=ALUOp.IDENTITY.value,
+    c=2,        # Grava no PC
+    enc=1,
+    addr=0      # Volta para Fetch (que já vai buscar no novo endereço)
 )

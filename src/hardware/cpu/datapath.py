@@ -29,7 +29,7 @@ class Datapath:
         1. Lê registradores para os Barramentos A e B.
         2. Executa ULA.
         3. Executa Shifter.
-        4. Escreve resultado via Barramento C (se habilitado).
+        4. Escreve resultado via Barramento C (se habilitado ou via sinais dedicados).
         """
         
         # --- 1. Leitura dos Barramentos A e B ---
@@ -47,7 +47,17 @@ class Datapath:
         # --- 3. Execução do Deslocador ---
         shifter_result = self.shifter.shift(signals.sh, alu_result)
 
-        # --- 4. Escrita no Barramento C ---
+        # --- 4. Escrita nos Registradores ---
+        
+        # CORREÇÃO: O MAR e MBR possuem sinais de escrita dedicados (independente do ENC)
+        # Isso garante que instruções como "MAR := PC" funcionem mesmo sem selecionar MAR no bus C.
+        if signals.mar:
+            self.registers.write('MAR', shifter_result)
+            
+        if signals.mbr:
+            self.registers.write('MBR', shifter_result)
+
+        # Escrita padrão do Barramento C (controlada pelo decodificador 4-pra-16)
         if signals.enc:
             self._write_bus_c(signals.c, shifter_result)
 
